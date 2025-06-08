@@ -7,13 +7,27 @@ useradd $container_name || echo "User already exists."
 
 
 
-# create the ha directory for the docker volumes if it doesn't exist
+# create the ha directory and others for the docker volumes if it doesn't exist
 
 if [ ! -d /home/$container_name ];then
      if ! mkdir /home/$container_name; then  # Shorter version. Shell will complain if you p>
      echo "Can't make dir: $container_name"
      fi
 fi
+
+if [ ! -d /home/$container_name/work ];then
+     if ! mkdir /home/$container_name/work; then  # Shorter version. Shell will complain if you p>
+     echo "Can't make dir: $container_name/work"
+     fi
+fi
+
+if [ ! -d /home/$container_name/conf ];then
+     if ! mkdir /home/$container_name/conf; then  # Shorter version. Shell will complain if you p>
+     echo "Can't make dir: $container_name/conf"
+     fi
+fi
+
+
 
 
 
