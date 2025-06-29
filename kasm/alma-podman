@@ -1,0 +1,1 @@
+sudo podman run --rm -d -it --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/core-almalinux-8:1.16.0

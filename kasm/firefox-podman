@@ -1,0 +1,4 @@
+#!/bin/bash
+# the user is kasm_user
+# the password is password
+podman run --rm -it -d --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/ubuntu-jammy-desktop:1.17.0
