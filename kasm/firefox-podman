@@ -1,4 +1,5 @@
 #!/bin/bash
-# the user is kasm_user
-# the password is password
-podman run --rm -it -d --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/ubuntu-jammy-desktop:1.17.0
+# This script runs a Kasm Firefox container using Podman.
+# Default user is 'kasm_user' and the default password is 'password'.
+#
+sudo podman run --rm -it -d --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0
