@@ -2,4 +2,59 @@
 # This script runs a Kasm Firefox container using Podman.
 # Default user is 'kasm_user' and the default password is 'password'.
 #
-sudo podman run --rm -it -d --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0
+
+
+
+#sudo podman run --rm -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly 
+sudo podman start firefox
+
+# This uses rolling tags, there are daily and weekly tags available.
+# firefox:x86_64-1.17.0-rolling-weekly
+ 
+# Wait for the container to start
+sleep 5
+
+#check if the container is running
+if ! podman ps --format "{{.Names}}" | grep -q "firefox"; then
+    echo "Firefox container is not running."
+#    exit 1
+fi
+
+if  podman ps --format "{{.Names}}" | grep -q "firefox"; then
+    echo "Firefox container is running."
+#    exit 1
+fi
+
+# Find the first .json file in the current directory
+BOOKMARKS_FILE=$(ls *.json 2>/dev/null | head -n 1)
+
+if [ -z "$BOOKMARKS_FILE" ]; then
+    echo "No .json bookmarks file found in the current directory."
+    exit 1
+fi
+
+ Find the first .json file in the current directory
+USERSETTINGS_FILE=$(ls user.js 2>/dev/null | head -n 1)
+
+if [ -z "$USERSETTINGS_FILE" ]; then
+    echo "No .json bookmarks file found in the current directory."
+#    exit 1
+fi
+
+
+# Get the name of the running Firefox container (assumes name contains 'firefox')
+CONTAINER_NAME="firefox"
+
+echo "Using container: $CONTAINER_NAME"
+if [ -z "$CONTAINER_NAME" ]; then
+    echo "No running Firefox container found."
+    exit 1
+fi
+
+# Copy the bookmarks file into the container's /home/kasm-user directory
+podman cp "$BOOKMARKS_FILE" "$CONTAINER_NAME":/home/kasm-user/
+podman cp "$USERSETTINGS_FILE" "$CONTAINER_NAME":/home/kasm-user/.mozilla/firefox/ 
+
+echo "$BOOKMARKS_FILE file copied to /home/kasm-user in container"
+
+echo "$USERSETTINGS_FILE file copied to /home/kasm-user in container"
