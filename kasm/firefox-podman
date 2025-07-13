@@ -33,7 +33,7 @@ if [ -z "$BOOKMARKS_FILE" ]; then
     exit 1
 fi
 
- Find the first .json file in the current directory
+# Find the first user.js file in the current directory
 USERSETTINGS_FILE=$(ls user.js 2>/dev/null | head -n 1)
 
 if [ -z "$USERSETTINGS_FILE" ]; then
