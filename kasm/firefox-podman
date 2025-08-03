@@ -5,7 +5,7 @@
 
 
 
-#sudo podman run --rm -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly 
+#sudo podman run --rm  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly 
 sudo podman start firefox
 
 # This uses rolling tags, there are daily and weekly tags available.

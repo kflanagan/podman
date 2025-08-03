@@ -1,0 +1,23 @@
+#!/bin/bash
+
+
+# set up and run n8n with podman, based on https://docs.n8n.io/hosting/installation/docker/
+#check if volume exists
+if podman volume inspect n8n_data > /dev/null 2>&1; then
+    echo "Volume n8n_data already exists."
+else
+    echo "Creating volume n8n_data."
+    podman volume create n8n_data
+fi
+
+
+#check if container is running
+if podman ps --filter "name=n8n" --filter "status=running" | grep n8n > /dev/null 2>&1; then
+    echo "Container n8n is already running."
+    exit 0
+else
+    echo "Starting container n8n."  
+    podman  run -it -d --rm --name n8n -p 5678:5678 -v n8n_data:/home/node/.n8n docker.n8n.io/n8nio/n8n
+
+fi  
+
