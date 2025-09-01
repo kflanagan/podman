@@ -1,0 +1,18 @@
+# # Check the age of the image file
+ IMAGE_NAME="kasmweb/firefox:1.17.0-rolling-weekly"
+ IMAGE_CREATED=$(podman image inspect "$IMAGE_NAME" --format '{{.Created}}' 2>/dev/null)
+
+ if [ -z "$IMAGE_CREATED" ]; then
+     echo "Image $IMAGE_NAME not found locally."
+ else
+     # Convert image creation time to epoch seconds
+     IMAGE_CREATED_EPOCH=$(date -d "$IMAGE_CREATED" +%s)
+     NOW_EPOCH=$(date +%s)
+     AGE_DAYS=$(( (NOW_EPOCH - IMAGE_CREATED_EPOCH) / 86400 ))
+
+     if [ "$AGE_DAYS" -gt 7 ]; then
+         echo "Image $IMAGE_NAME is older than 7 days ($AGE_DAYS days old)."
+     else
+         echo "Image $IMAGE_NAME is $AGE_DAYS days old."
+     fi
+ fi

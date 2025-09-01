@@ -6,27 +6,78 @@
 
 
 #sudo podman run --rm  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly 
-sudo podman start firefox
+#sudo podman start firefox
 
 # This uses rolling tags, there are daily and weekly tags available.
 # firefox:x86_64-1.17.0-rolling-weekly
  
 # Wait for the container to start
-sleep 5
+#sleep 5
+
+# List all Podman container names and set to a variable
+CONTAINER_NAMES=$(podman ps -a --format "{{.Names}}")
+echo "Available containers: $CONTAINER_NAMES"
 
 #check if the container is running
+#This is a duplicate of the next check, but commented out for reference.
+#if ! podman ps --format "{{.Names}}" | grep -q "firefox"; then
+#    	echo "Firefox container is not running."
+#	sudo podman start firefox
+#    exit 1
+#fi
+
+#check if the image exists and is older than 1 week and recreate it if so   
+if podman ps -a --format "{{.Names}}" | grep -q "firefox"; then
+    IMAGE_ID=$(podman images --format "{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}" | grep "kasmweb/firefox:1.17.0-rolling-weekly" | awk '{print $2}')
+    if [ -n "$IMAGE_ID" ]; then
+        IMAGE_DATE=$(podman image inspect "$IMAGE_ID" --format '{{.Created}}')
+        #IMAGE_TIMESTAMP=$(date -d "$IMAGE_DATE" +%s)
+        #cut the timestamp to days
+        IMAGE_TIMESTAMP=$(echo "$IMAGE_TIMESTAMP" | cut -d ' ' -f 1)
+        
+        # Get the current timestamp
+        CURRENT_TIMESTAMP=$(date +"%Y-%m-%d")
+        #convert the timestamps to seconds since epoch
+        IMAGE_TIMESTAMP=$(date -d "$IMAGE_TIMESTAMP" +%s)
+        CURRENT_TIMESTAMP=$(date -d "$CURRENT_TIMESTAMP" +%s)
+        echo "Image timestamp: $IMAGE_TIMESTAMP"
+        echo "Current timestamp: $CURRENT_TIMESTAMP"
+        # Calculate the age of the image in days
+        AGE=$(( (CURRENT_TIMESTAMP - IMAGE_TIMESTAMP) / 86400 ))
+        if [ "$AGE" -gt 7 ]; then
+            echo "Image is older than 7 days. Recreating the container."
+            sudo podman rm -f firefox
+            sudo podman run --rm  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
+            echo "Firefox container recreated with default user 'kasm_user' and password 'password'."
+        else
+            echo "Image is not older than 7 days. No action needed."
+        fi
+    else
+        echo "Image not found. Creating the container."
+        sudo podman run --rm  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
+        echo "Firefox container created with default user 'kasm_user' and password 'password'."
+    fi
+else
+    echo "Container does not exist. Creating the container."
+    sudo podman run --rm  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
+    echo "Firefox container created with default user 'kasm_user' and password 'password'."
+fi  
+#check if the container is running
 if ! podman ps --format "{{.Names}}" | grep -q "firefox"; then
-    echo "Firefox container is not running."
+        echo "Firefox container is not running."
+        #sudo podman run --rm  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
+        echo "Firefox container started. with default user 'kasm_user' and password 'password'."
 #    exit 1
 fi
+
 
 if  podman ps --format "{{.Names}}" | grep -q "firefox"; then
     echo "Firefox container is running."
-#    exit 1
+#    exit 0
 fi
 
 # Find the first .json file in the current directory
-BOOKMARKS_FILE=$(ls *.json 2>/dev/null | head -n 1)
+BOOKMARKS_FILE=$(ls ./*.json 2>/dev/null | head -n 1)
 
 if [ -z "$BOOKMARKS_FILE" ]; then
     echo "No .json bookmarks file found in the current directory."
@@ -34,7 +85,7 @@ if [ -z "$BOOKMARKS_FILE" ]; then
 fi
 
 # Find the first user.js file in the current directory
-USERSETTINGS_FILE=$(ls user.js 2>/dev/null | head -n 1)
+USERSETTINGS_FILE=$(ls ./user.js 2>/dev/null | head -n 1)
 
 if [ -z "$USERSETTINGS_FILE" ]; then
     echo "No .json bookmarks file found in the current directory."
