@@ -10,8 +10,8 @@ CONTAINER_NAME="firefox"
 ########  Start of functions ########
 
 # check if the container is running first, if so, exit with a message
-check_firefox_running() {
-if podman ps --format "{{.Names}}" | grep -q $CONTAINER_NAME; then
+check_for_running() {
+if podman ps --format "{{.Names}}" | grep "${CONTAINER_NAME}"; then
         echo $CONTAINER_NAME" container is running."
         exit 1
     fi
@@ -19,23 +19,93 @@ if podman ps --format "{{.Names}}" | grep -q $CONTAINER_NAME; then
 }
 
 
-##########  Firefox specific function ToDo:  Make this use the $CONTAINER_NAME variable and figure out how to not have the repo hard coded ##########
-# This first for the image, to see if it exists locally
-has_firefox_image() {
-    if podman images --format "{{.Repository}}:{{.Tag}}" | grep -qi "firefox"; then
-        echo "A local image containing 'firefox' exists."
+
+# This checks for the image, to see if it exists, returns 0 if found, 1 if not
+check_for_image() {
+    if podman images --format "{{.Repository}}:{{.Tag}}" | grep -qi "${CONTAINER_NAME}"; then
+        echo "A local image containing '$CONTAINER_NAME' exists."
         return 0
     else
-        echo "No local image containing 'firefox' found."
+        echo "No local image containing '$CONTAINER_NAME' found."
         return 1
     fi
+}
+
+
+
+##  ToDo new functions for the following, but not tested or in the right place yet:
+# 1. Just starts the container, nothing else
+start_firefox_container() {
+    podman run --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
+    echo "Firefox container started with default user 'kasm_user' and password 'password'."
+    copy_files_to_container
+}
+
+# 2. Stops the container if it's running
+# ToDo, Where is this called from, and what would it call next?
+stop_firefox_container() {
+    if podman ps --format "{{.Names}}" | grep -q "${CONTAINER_NAME}"; then
+        podman stop "${CONTAINER_NAME}"
+        echo "$CONTAINER_NAME container stopped."
+    else
+        echo "$CONTAINER_NAME container is not running."
+    fi
+}
+
+
+
+#ToDo 3. This function, check_and_recreate_firefox_container, needs to be broken up so that the check and the start are separate.
+
+# This function checks if the image exists and is older than 1 week and downloads newer image if so
+check_and_recreate_firefox_container() {
+    # Check if the image exists and is older than 1 week and recreate it if so   
+    if podman ps -a --format "{{.Names}}" | grep -q "firefox"; then
+        IMAGE_ID=$(podman images --format "{{.ID}}" "kasmweb/firefox:1.17.0-rolling-weekly" | head -n 1)
+        if [ -n "$IMAGE_ID" ]; then
+            IMAGE_DATE=$(podman image inspect "$IMAGE_ID" --format '{{.Created}}' | cut -d'.' -f1 | sed 's/T/ /;s/Z//')
+            IMAGE_TIMESTAMP=$(date -d "$IMAGE_DATE" +%s)
+            # Cut the timestamp to days
+            IMAGE_TIMESTAMP=$(echo "$IMAGE_TIMESTAMP" | cut -d ' ' -f 1) 
+            # Get the current timestamp
+            CURRENT_TIMESTAMP=$(date +"%Y-%m-%d")
+            # Convert the timestamps to seconds since epoch
+            IMAGE_TIMESTAMP=$(date -d "$IMAGE_TIMESTAMP" +%s)
+            CURRENT_TIMESTAMP=$(date -d "$CURRENT_TIMESTAMP" +%s)
+#  Somewhere above her in this function I get the invalid date error, need to debug
+            echo "Image timestamp: $IMAGE_TIMESTAMP"
+            echo "Current timestamp: $CURRENT_TIMESTAMP"
+            # Calculate the age of the image in days
+            AGE=$(( (CURRENT_TIMESTAMP - IMAGE_TIMESTAMP) / 86400 ))
+            if [ "$AGE" -gt 7 ]; then
+                echo "Image is older than 7 days. Pulling the latest image and recreating the container."
+                podman pull kasmweb/firefox:1.17.0-rolling-weekly
+                podman rm -f firefox
+                # podman run -it -d --name $CONTAINER_NAME --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
+                start_firefox_container
+                echo "Firefox container recreated with default user 'kasm_user' and password 'password'."
+            else
+                echo "Image is not older than 7 days. No action needed."
+                start_firefox_container
+            fi
+#        else
+#            echo "Image not found. Creating the container."
+#            #sudo podman run --rm  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
+#            echo "Firefox container created with default user 'kasm_user' and password 'password'."
+        fi
+    else
+        echo "Container does not exist. Creating the container."
+    
+        sudo podman run  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
+        echo "Firefox container created with default user 'kasm_user' and password 'password'."
+        copy_files_to_container
+    fi  
 }
 
 #This function copies the bookmarks and user.js file to the container if it's running.  Handles failre, ToDo: but needs 
 #to be be better, where is it called from, etc.  
 copy_files_to_container() {
     # Find the first .json file in the current directory
-    BOOKMARKS_FILE=$(ls ./*.json 2>/dev/null | head -n 1)
+    BOOKMARKS_FILE=$(find . -maxdepth 1 -name '*.json' | head -n 1)
     # This is a custom path for my 2025 bookmarks file
     BOOKMARKS_FILE2=../bookmarks-2025.json
 
@@ -47,92 +117,28 @@ copy_files_to_container() {
         echo "$BOOKMARKS_FILE file copied to /home/kasm-user in container"
     fi
 
-    # Find the first user.js file in the current directory
-    USERSETTINGS_FILE=$(ls ./user.js 2>/dev/null | head -n 1)
-
-    if [ -z "$USERSETTINGS_FILE" ]; then
-        echo "No user.js settings file found in the current directory."
-        exit 1
-    else
+    # Check if user.js file exists in the current directory
+    if test -f ./user.js; then
+        USERSETTINGS_FILE=./user.js
         podman cp "$USERSETTINGS_FILE" "$CONTAINER_NAME":/home/kasm-user/.mozilla/firefox/
         echo "$USERSETTINGS_FILE file copied to /home/kasm-user/.mozilla/firefox/ in container"
+    else
+        echo "No user.js settings file found in the current directory."
+        exit 1
     fi
 }
 
-##  ToDo new functions for the following, but not tested or in the right place yet:
-# 1. Just starts the container, nothing else
-start_firefox_container() {
-    podman run --rm  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
-    echo "Firefox container started with default user 'kasm_user' and password 'password'."
-}
-# 2. Stops the container if it's running
-# ToDo, Where is this called from, and what would it call next?
-stop_firefox_container() {
-    if podman ps --format "{{.Names}}" | grep -q $CONTAINER_NAME; then
-        podman stop $CONTAINER_NAME
-        echo "$CONTAINER_NAME container stopped."
-    else
-        echo "$CONTAINER_NAME container is not running."
-    fi
-}
 
-#ToDo 3. This function, check_and_recreate_firefox_container, needs to be broken up so that the check and the start are separate.
+########  End of functions ########
+#Make a list of functions for easier reading
+     
+#Main script starts here
 
-# This function checks if the image exists and is older than 1 week and downloads newer image if so
-check_and_recreate_firefox_container() {
-    # Check if the image exists and is older than 1 week and recreate it if so   
-    if podman ps -a --format "{{.Names}}" | grep -q "firefox"; then
-        IMAGE_ID=$(podman images --format "{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}" | grep "kasmweb/firefox:1.17.0-rolling-weekly" | awk '{print $2}')
-        if [ -n "$IMAGE_ID" ]; then
-            IMAGE_DATE=$(podman image inspect "$IMAGE_ID" --format '{{.Created}}')
-            IMAGE_TIMESTAMP=$(date -d "$IMAGE_DATE" +%s)
-            # Cut the timestamp to days
-            IMAGE_TIMESTAMP=$(echo "$IMAGE_TIMESTAMP" | cut -d ' ' -f 1)
-            
-            # Get the current timestamp
-            CURRENT_TIMESTAMP=$(date +"%Y-%m-%d")
-            # Convert the timestamps to seconds since epoch
-            IMAGE_TIMESTAMP=$(date -d "$IMAGE_TIMESTAMP" +%s)
-            CURRENT_TIMESTAMP=$(date -d "$CURRENT_TIMESTAMP" +%s)
-            echo "Image timestamp: $IMAGE_TIMESTAMP"
-            echo "Current timestamp: $CURRENT_TIMESTAMP"
-            # Calculate the age of the image in days
-            AGE=$(( (CURRENT_TIMESTAMP - IMAGE_TIMESTAMP) / 86400 ))
-            if [ "$AGE" -gt 7 ]; then
-                echo "Image is older than 7 days. Recreating the container."
-                #sudo podman rm -f firefox
-                #sudo podman run --rm  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
-                echo "Firefox container recreated with default user 'kasm_user' and password 'password'."
-            else
-                echo "Image is not older than 7 days. No action needed."
-            fi
-        else
-            echo "Image not found. Creating the container."
-            #sudo podman run --rm  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
-            echo "Firefox container created with default user 'kasm_user' and password 'password'."
-        fi
-    else
-        echo "Container does not exist. Creating the container."
-        #sudo podman run --rm  --replace -it -d --name firefox --shm-size=512m -p 6901:6901 -e VNC_PW=password kasmweb/firefox:1.17.0-rolling-weekly
-        echo "Firefox container created with default user 'kasm_user' and password 'password'."
-    fi  
-}
-
-
-
-
-
-
-
+# if check_for_running is false, and check for image is true, then call the function that starts the container
 
 
 #check if the container is running
-check_firefox_running
-
-#check if a local image containing 'firefox' exists
-has_firefox_image || { echo "No local image containing 'firefox' found. Exiting."; exit 1; }
-
-copy_files_to_container() {
-
-
-
+#check_for_running
+#check_for_image
+#start_firefox_container
+check_and_recreate_firefox_container
