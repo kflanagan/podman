@@ -106,22 +106,24 @@ check_and_recreate_firefox_container() {
 copy_files_to_container() {
     # Find the first .json file in the current directory
     BOOKMARKS_FILE=$(find . -maxdepth 1 -name '*.json' | head -n 1)
-    # This is a custom path for my 2025 bookmarks file
-    BOOKMARKS_FILE2=../bookmarks-2025.json
+
 
     if [ -z "$BOOKMARKS_FILE" ]; then
         echo "No .json bookmarks file found in the current directory."
         exit 1
     else
-        podman cp "$BOOKMARKS_FILE" "$CONTAINER_NAME":/home/kasm-user/
-        echo "$BOOKMARKS_FILE file copied to /home/kasm-user in container"
+        if podman cp "$BOOKMARKS_FILE" "$CONTAINER_NAME":/home/kasm-user/; then
+            echo "$BOOKMARKS_FILE file copied to /home/kasm-user in container"
+        fi
+    
     fi
 
     # Check if user.js file exists in the current directory
     if test -f ./user.js; then
         USERSETTINGS_FILE=./user.js
-        podman cp "$USERSETTINGS_FILE" "$CONTAINER_NAME":/home/kasm-user/.mozilla/firefox/
-        echo "$USERSETTINGS_FILE file copied to /home/kasm-user/.mozilla/firefox/ in container"
+        if podman cp "$USERSETTINGS_FILE" "$CONTAINER_NAME":/home/kasm-user/.mozilla/firefox/;then
+            echo "$USERSETTINGS_FILE file copied to /home/kasm-user/.mozilla/firefox/ in container"
+        fi
     else
         echo "No user.js settings file found in the current directory."
         exit 1
@@ -138,7 +140,6 @@ copy_files_to_container() {
 
 
 #check if the container is running
-#check_for_running
-#check_for_image
-#start_firefox_container
+check_for_running
+check_for_image
 check_and_recreate_firefox_container
