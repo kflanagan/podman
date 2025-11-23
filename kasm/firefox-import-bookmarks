@@ -1,0 +1,118 @@
+#!/bin/bash
+# This script imports bookmarks into Firefox from a specified JSON file.
+# It is intended to be run inside a Podman container with Firefox installed.
+# Usage: ./firefox-import-bookmarks /path/to/bookmarks.json
+set -e
+set -o pipefail
+set -u
+IFS=$'\n\t'
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export LANG="C.UTF-8"
+export LC_ALL="C.UTF-8"
+export LANGUAGE="C.UTF-8"
+export MOZ_NO_REMOTE=1
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DISPLAY=":0"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+BOOKMARKS_FILE="kf.json"
+
+
+
+# Function to print usage information
+print_usage() {
+    echo "Usage: $0 /path/to/bookmarks.json"
+    echo "Imports bookmarks into Firefox from the specified JSON file."
+}   
+# Check if the correct number of arguments is provided
+if [ "$#" -ne 1 ]; then
+    echo "Error: Invalid number of arguments."
+    print_usage
+    exit 1
+fi  
+#BOOKMARKS_FILE="$1"
+# Check if the bookmarks file exists
+if [ ! -f "$BOOKMARKS_FILE" ]; then
+    echo "Error: Bookmarks file '$BOOKMARKS_FILE' does not exist."
+    exit 1
+fi
+# Check if Firefox is installed
+if ! command -v firefox &> /dev/null; then
+    echo "Error: Firefox is not installed."
+    exit 1
+fi
+
+
+# check for sqlite3
+if ! command -v sqlite3 &> /dev/null; then
+    echo "Error: sqlite3 is not installed."
+    exit 1
+fi  
+# # Check if jq is installed
+## Commented out jq check as it's not available in kasm base image, and I don't think that it's needed.
+# if ! command -v jq &> /dev/null; then
+#     echo "Error: jq is not installed."
+#     exit 1
+# fi
+
+# Get the Firefox profile directory
+FIREFOX_PROFILE_DIR=$(find ~/.mozilla/firefox -maxdepth 1 -type d -name "*.default-release" | head -n 1)
+if [ -z "$FIREFOX_PROFILE_DIR" ]; then
+    echo "Error: Could not find Firefox profile directory."
+    exit 1
+fi
+# Check if the profile directory exists
+if [ ! -d "$FIREFOX_PROFILE_DIR" ]; then
+    echo "Error: Firefox profile directory '$FIREFOX_PROFILE_DIR' does not exist."
+    exit 1
+fi
+# Close Firefox if it's running
+if pgrep -x "firefox" > /dev/null; then
+    echo "Closing Firefox..."
+    pkill -x "firefox"
+    sleep 5
+fi
+# Backup the places.sqlite file
+PLACES_DB="$FIREFOX_PROFILE_DIR/places.sqlite"
+if [ ! -f "$PLACES_DB" ]; then
+    echo "Error: places.sqlite file not found in profile directory."
+    exit 1
+fi
+cp "$PLACES_DB" "$PLACES_DB.bak"
+# Import bookmarks from the JSON file
+echo "Importing bookmarks from '$BOOKMARKS_FILE'..."
+# Read the JSON file and extract bookmarks
+BOOKMARKS=$(jq -c '.bookmarks[]' "$BOOKMARKS_FILE")
+if [ -z "$BOOKMARKS" ]; then
+    echo "Error: No bookmarks found in the JSON file."
+    exit 1
+fi
+# Function to add a bookmark to the places.sqlite database
+add_bookmark() {
+    local title="$1"
+    local url="$2"
+    local guid
+    guid=$(uuidgen)
+    sqlite3 "$PLACES_DB" <<EOF
+INSERT INTO moz_places (url, title, rev_host, visit_count, hidden, typed, frecency, last_visit_date, guid)
+VALUES ('$url', '$title', reverse(substr('$url', instr('$url', '://') + 3, instr(substr('$url', instr('$url', '://') + 3), '/') - 1)), 0, 0, 0, -1, NULL, '$guid');
+INSERT INTO moz_bookmarks (type, fk, parent, position, title, guid, dateAdded, lastModified)
+VALUES (1, (SELECT id FROM moz_places WHERE guid='$guid'), 1, (SELECT COALESCE(MAX(position), -1) + 1 FROM moz_bookmarks WHERE parent=1), '$title', '$guid', strftime('%s','now') * 1000000, strftime('%s','now') * 1000000);
+EOF
+}
+# Loop through each bookmark and add it to the database
+while IFS= read -r bookmark; do
+    title=$(echo "$bookmark" | jq -r '.title')
+    url=$(echo "$bookmark" | jq -r '.url')
+    if [ -n "$title" ] && [ -n "$url" ]; then
+        add_bookmark "$title" "$url"
+        echo "Added bookmark: $title - $url"
+    else
+        echo "Skipping invalid bookmark entry."
+    fi
+done <<< "$BOOKMARKS"
+echo "Bookmark import completed."
+# Restart Firefox
+echo "Starting Firefox..."
+firefox &>/dev/null &
+echo "Firefox started."         
+# End of script
